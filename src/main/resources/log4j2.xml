@@ -1,0 +1,12 @@
+<Configuration status="WARN" name="luceneIndex">
+    <Appenders>
+        <Console name="logToConsole" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss} %p %msg%n"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="logToConsole"/>
+        </Root>
+    </Loggers>
+</Configuration>

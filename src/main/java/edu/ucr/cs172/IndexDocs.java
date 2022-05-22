@@ -6,17 +6,19 @@ import java.util.Map;
 
 import com.mongodb.client.*;
 
+import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.*;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 
-//import static org.apache.lucene.document.DateTools.dateToString;
+import static org.apache.lucene.document.DateTools.dateToString;
 //import org.apache.lucene.codecs.simpletext.SimpleTextCodec;
 
 import org.apache.logging.log4j.Logger;
@@ -39,6 +41,7 @@ public class IndexDocs /*implements AutoCloseable*/ {
         // map to define custom analyzers for different fields
         Map<String, Analyzer> analyzerPerField = new HashMap<>();
         analyzerPerField.put("mainText", Utilities.customAnalyzer());
+        analyzerPerField.put("title", new SimpleAnalyzer());
 
         Analyzer analyzer = new PerFieldAnalyzerWrapper(new StandardAnalyzer(), analyzerPerField);
         Directory directory = FSDirectory.open(Path.of("index/"));
@@ -48,8 +51,7 @@ public class IndexDocs /*implements AutoCloseable*/ {
         // config.setCodec(new SimpleTextCodec());
         IndexWriter indexWriter = new IndexWriter(directory, config);
 
-        final String uri = "mongodb://localhost:27017";
-        MongoClient mongoClient = Utilities.getMongoClient(uri);
+        MongoClient mongoClient = Utilities.getMongoClient(Utilities.URI);
         assert mongoClient != null;
         MongoDatabase database = mongoClient.getDatabase("Wikipedia");
         MongoCollection<org.bson.Document> collection = database.getCollection("Pages");
@@ -68,7 +70,7 @@ public class IndexDocs /*implements AutoCloseable*/ {
         logger.info("Finish indexing {} docs", numDocs);
     }
 
-    private static Document indexDoc(org.bson.Document document){
+    private static Document indexDoc(org.bson.Document document) {
         Document doc = new Document();
         /*  Can take advantage on index on mongo to keep index small
             Field titleField = new Field("title", document.getString("title"), fieldText(Value.store));
@@ -77,7 +79,11 @@ public class IndexDocs /*implements AutoCloseable*/ {
             doc.add(titleField);
             doc.add(dateField);
         */
+        String lastModified = dateToString(document.getDate("lastMod"), DateTools.Resolution.DAY);
         Field urlField = new Field("url", document.getString("url"), fieldString(Value.store));
+        Field titleField = new Field("title", document.getString("title"),
+                fieldText(Value.no_store, Value.no_tvector));
+        IntPoint dateField = new IntPoint("lastMod", Integer.parseInt(lastModified));
         Field mainTextField = new Field("mainText", document.getString("mainText"),
                 fieldText(Value.no_store, Value.pos_offset));
         Field boldTextField = new Field("boldText", document.getString("boldText"),
@@ -85,28 +91,35 @@ public class IndexDocs /*implements AutoCloseable*/ {
         Field italicTextField = new Field("italicText", document.getString("italicText"),
                 fieldText(Value.no_store, Value.no_tvector));
         doc.add(urlField);
+        doc.add(titleField);
+        doc.add(dateField);
         doc.add(mainTextField);
         doc.add(boldTextField);
         doc.add(italicTextField);
         return doc;
     }
-    private static FieldType fieldText(Value store, Value tvector){
+
+    private static FieldType fieldText(Value store, Value tvector) {
         FieldType field;
+        // option to store item in index
         field = (store == Value.store) ? new FieldType(TextField.TYPE_STORED) : new FieldType(TextField.TYPE_NOT_STORED);
+
+        // option to store additional index options
         field.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
 
-        if(tvector == Value.pos) {
+        // option to store term vectors
+        if (tvector == Value.pos) {
             field.setStoreTermVectors(true);
             field.setStoreTermVectorPositions(true);
-        }
-        else if(tvector == Value.pos_offset) {
+        } else if (tvector == Value.pos_offset) {
             field.setStoreTermVectors(true);
             field.setStoreTermVectorPositions(true);
             field.setStoreTermVectorOffsets(true);
         }
         return field;
     }
-    private static FieldType fieldString(Value option){
+
+    private static FieldType fieldString(Value option) {
         FieldType field;
         if (option == Value.store)
             field = new FieldType(StringField.TYPE_STORED);
@@ -114,5 +127,11 @@ public class IndexDocs /*implements AutoCloseable*/ {
             field = new FieldType(StringField.TYPE_NOT_STORED);
         field.setIndexOptions(IndexOptions.NONE);
         return field;
+    }
+
+    private static FieldType fieldDate() {
+        FieldType date = new FieldType(TextField.TYPE_STORED);
+        date.setIndexOptions(IndexOptions.NONE);
+        return date;
     }
 }
