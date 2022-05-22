@@ -5,6 +5,7 @@ import static com.mongodb.client.model.Filters.eq;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
@@ -12,6 +13,8 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.queryparser.flexible.standard.StandardQueryParser;
+import org.apache.lucene.queryparser.flexible.standard.config.PointsConfig;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
@@ -25,6 +28,8 @@ import org.json.JSONArray;
 
 import java.lang.reflect.Array;
 import java.nio.file.Path;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -32,8 +37,7 @@ import java.util.Scanner;
 
 public class SearchDocs {
     public static ArrayList<Map<String, Object>> searchDocuments(String queryIn) throws Exception {
-        final String uri = "mongodb://localhost:27017";
-        MongoClient mongoClient = Utilities.getMongoClient(uri);
+        MongoClient mongoClient = Utilities.getMongoClient(Utilities.URI);
         assert mongoClient != null;
         MongoDatabase database = mongoClient.getDatabase("Wikipedia");
         MongoCollection<org.bson.Document> collection = database.getCollection("Pages");
@@ -44,6 +48,7 @@ public class SearchDocs {
 
         Map<String, Analyzer> analyzerPerField = new HashMap<>();
         analyzerPerField.put("mainText", Utilities.customAnalyzer());
+        analyzerPerField.put("title", new SimpleAnalyzer());
 
         Analyzer analyzer = new PerFieldAnalyzerWrapper(new StandardAnalyzer(), analyzerPerField);
 
@@ -52,16 +57,24 @@ public class SearchDocs {
         boosts.put("boldText", 0.1f);
         boosts.put("italicText", 0.05f);
 
-        String[] fields = {"mainText", "boldText", "italicText", "title"};
+        CharSequence[] fields = {"boldText", "italicText", "title"};
 //        QueryParser parser = new QueryParser("mainText", analyzer);
-        QueryParser parser = new MultiFieldQueryParser(fields, analyzer, boosts);
+        StandardQueryParser parser = new StandardQueryParser(analyzer);
+        parser.setMultiFields(fields);
+//        QueryParser parser = new MultiFieldQueryParser(fields, analyzer, boosts);
+//
+        PointsConfig pointsConfig = new PointsConfig(new DecimalFormat(), Integer.class);
+        Map<String, PointsConfig> pointsConfigMap = new HashMap<>();
+        pointsConfigMap.put("lastMod", pointsConfig);
+        parser.setPointsConfigMap(pointsConfigMap);
+
 
 //        Scanner myObj = new Scanner(System.in);
 //        System.out.println("Enter query: ");
 //        String queryIn = myObj.nextLine();
-        Query query = parser.parse(queryIn);
+        Query query = parser.parse(queryIn,"mainText");
 
-        int topHitCount = 3;
+        int topHitCount = 10;
         ScoreDoc[] hits = indexSearcher.search(query, topHitCount).scoreDocs;
         ArrayList<Map<String,Object>> documents = new ArrayList<>();
 
@@ -77,8 +90,9 @@ public class SearchDocs {
             SimpleHTMLFormatter htmlFormatter = new SimpleHTMLFormatter();
             Highlighter highlighter = new Highlighter(htmlFormatter, new QueryScorer(query));
             Fields tvector = indexReader.getTermVectors(id);
-            TokenStream tokenStream = TokenSources.getTermVectorTokenStreamOrNull("mainText", tvector, highlighter.getMaxDocCharsToAnalyze() - 1) ;
-            String snippets = highlighter.getBestFragments(tokenStream, mainText,2, "...");
+            TokenStream tokenStream = TokenSources.getTermVectorTokenStreamOrNull("mainText", tvector,  -1) ;
+            String snippets = highlighter.getBestFragments(tokenStream, mainText,3, "...");
+//            System.out.println(snippets);
             documents.add(Utilities.docToMap(doc,url,snippets));
         }
         indexReader.close();
