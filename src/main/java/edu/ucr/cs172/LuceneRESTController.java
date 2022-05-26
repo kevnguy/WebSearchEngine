@@ -12,7 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 
-@SpringBootApplication(/*exclude = MongoAutoConfiguration.class*/)
+@SpringBootApplication()
 @RestController
 public class LuceneRESTController {
 
@@ -22,11 +22,14 @@ public class LuceneRESTController {
 
 	@GetMapping(value = "/api/search")
 	@CrossOrigin(origins = "http://localhost:3000")
-	public ResponseEntity<ArrayList> hello2(@RequestParam String q)throws Exception {
+	public ResponseEntity<ArrayList> hello2(
+			@RequestParam String q,
+			@RequestParam(required = false) String model)throws Exception {
+		System.out.println(model);
 		if(!q.isEmpty()) {
 			try{
 				System.out.println(q);
-				ArrayList response = SearchDocs.searchDocuments(q);
+				ArrayList response = SearchDocs.searchDocuments(q,model);
 				return new ResponseEntity<>(response, HttpStatus.OK);
 			}
 			catch (Exception e){

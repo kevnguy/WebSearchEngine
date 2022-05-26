@@ -13,23 +13,21 @@ import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 
 import static org.apache.lucene.document.DateTools.dateToString;
-//import org.apache.lucene.codecs.simpletext.SimpleTextCodec;
 
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
-public class IndexDocs /*implements AutoCloseable*/ {
+public class IndexDocs {
 
     // for logging
     protected static Logger logger = LogManager.getLogger(IndexDocs.class);
 
-    // enum for field storage
+    // enum for field storage and index properties
     private enum Value {
         store, no_store, pos, pos_offset, no_tvector
     }
@@ -47,14 +45,13 @@ public class IndexDocs /*implements AutoCloseable*/ {
         Directory directory = FSDirectory.open(Path.of("index/"));
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
         config.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
-        // Uncomment for readable index file
-        // config.setCodec(new SimpleTextCodec());
         IndexWriter indexWriter = new IndexWriter(directory, config);
 
+        // mongo client for documents
         MongoClient mongoClient = Utilities.getMongoClient(Utilities.URI);
         assert mongoClient != null;
         MongoDatabase database = mongoClient.getDatabase("Wikipedia");
-        MongoCollection<org.bson.Document> collection = database.getCollection("Pages");
+        MongoCollection<org.bson.Document> collection = database.getCollection("IndexTest");
 
         try (MongoCursor<org.bson.Document> cursor = collection.find().iterator()) {
             while (cursor.hasNext()) {
@@ -70,15 +67,9 @@ public class IndexDocs /*implements AutoCloseable*/ {
         logger.info("Finish indexing {} docs", numDocs);
     }
 
+    // index documents
     private static Document indexDoc(org.bson.Document document) {
         Document doc = new Document();
-        /*  Can take advantage on index on mongo to keep index small
-            Field titleField = new Field("title", document.getString("title"), fieldText(Value.store));
-            Field dateField = new Field("lastMod", dateToString(document.getDate("lastMod"),
-                DateTools.Resolution.DAY), fieldString(Value.store));
-            doc.add(titleField);
-            doc.add(dateField);
-        */
         String lastModified = dateToString(document.getDate("lastMod"), DateTools.Resolution.DAY);
         Field urlField = new Field("url", document.getString("url"), fieldString(Value.store));
         Field titleField = new Field("title", document.getString("title"),
@@ -99,6 +90,7 @@ public class IndexDocs /*implements AutoCloseable*/ {
         return doc;
     }
 
+    // helper to configure index storage and properties
     private static FieldType fieldText(Value store, Value tvector) {
         FieldType field;
         // option to store item in index
@@ -119,6 +111,7 @@ public class IndexDocs /*implements AutoCloseable*/ {
         return field;
     }
 
+    // helper to configure index storage and properties
     private static FieldType fieldString(Value option) {
         FieldType field;
         if (option == Value.store)
@@ -129,6 +122,7 @@ public class IndexDocs /*implements AutoCloseable*/ {
         return field;
     }
 
+    // helper to configure index storage and properties for dates
     private static FieldType fieldDate() {
         FieldType date = new FieldType(TextField.TYPE_STORED);
         date.setIndexOptions(IndexOptions.NONE);
