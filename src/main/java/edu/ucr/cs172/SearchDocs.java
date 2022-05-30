@@ -1,5 +1,10 @@
 package edu.ucr.cs172;
 
+import java.nio.file.Path;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import com.mongodb.client.*;
 import static com.mongodb.client.model.Filters.eq;
 
@@ -28,27 +33,17 @@ import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.search.highlight.SimpleHTMLFormatter;
 import org.apache.lucene.search.highlight.Highlighter;
 
-import java.nio.file.Path;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
-
 public class SearchDocs {
     public static ArrayList<Map<String, Object>> searchDocuments(String queryIn, String model) throws Exception {
         // custom bm25 values
         Similarity perFieldSimilarities =  new PerFieldSimilarityWrapper() {
             @Override
             public Similarity get(String name) {
-                if (name.equals("title"))
-                    return new BM25Similarity(/*k1*/0.5f, /*b*/0.8f);
-                else if (name.equals("mainText"))
-                    return new BM25Similarity(/*k1*/1.2f, /*b*/0.75f);
-                else if (name.equals("italicText"))
-                    return new BM25Similarity(/*k1*/0.6f, /*b*/0.8f);
-                else if(name.equals("boldText"))
-                    return new BM25Similarity(/*k1*/0.6f, /*b*/0.8f);
-                return new BM25Similarity();
+                return switch (name) {
+                    case "title" -> new BM25Similarity(/*k1*/0.5f, /*b*/0.8f);
+                    case "italicText", "boldText" -> new BM25Similarity(/*k1*/0.6f, /*b*/0.8f);
+                    default -> new BM25Similarity();
+                };
             }
         };
 
@@ -64,13 +59,13 @@ public class SearchDocs {
         IndexSearcher indexSearcher = new IndexSearcher(indexReader);
         indexSearcher.setSimilarity(perFieldSimilarities);
 
-        // Custom analyzer for maintext
+        // Per-field analyzers
         Map<String, Analyzer> analyzerPerField = new HashMap<>();
         analyzerPerField.put("mainText", Utilities.customAnalyzer());
         analyzerPerField.put("title", new SimpleAnalyzer());
         Analyzer analyzer = new PerFieldAnalyzerWrapper(new StandardAnalyzer(), analyzerPerField);
 
-        // Boost values for BM25F
+        // Boost values for Multi-field queries
         Map<String, Float> boosts = new HashMap<>();
         boosts.put("title", 0.2f);
         boosts.put("boldText", 0.1f);
@@ -87,14 +82,13 @@ public class SearchDocs {
         pointsConfigMap.put("lastMod", pointsConfig);
         parser.setPointsConfigMap(pointsConfigMap);
 
-        // Simulated BM25F
-        String[] field = {"mainText","boldText", "italicText", "title"};
-        QueryParser Fparser = new MultiFieldQueryParser(field, analyzer, boosts);
-
         Query query;
-        if(model != null)
+        if(model != null) { // MultiField search
+            String[] field = {"mainText", "boldText", "italicText", "title"};
+            QueryParser Fparser = new MultiFieldQueryParser(field, analyzer, boosts);
             query = Fparser.parse(queryIn);
-        else
+        }
+        else // standard query search
             query = parser.parse(queryIn,"mainText");
 
         int topHitCount = 10;
@@ -109,13 +103,14 @@ public class SearchDocs {
             String mainText = doc.getString("mainText");
 
             System.out.println((rank+1) + " (score: " + hits[rank].score + ") --> " + "url: " + url);
-            System.out.println(indexSearcher.explain(query, hits[rank].doc));
+            // System.out.println(indexSearcher.explain(query, hits[rank].doc));
 
             // generate snippets with Lucene highlighter
             SimpleHTMLFormatter htmlFormatter = new SimpleHTMLFormatter();
             Highlighter highlighter = new Highlighter(htmlFormatter, new QueryScorer(query));
             Fields tvector = indexReader.getTermVectors(id);
-            TokenStream tokenStream = TokenSources.getTermVectorTokenStreamOrNull("mainText", tvector,  -1) ;
+            TokenStream tokenStream = TokenSources.getTermVectorTokenStreamOrNull("mainText",
+                    tvector, highlighter.getMaxDocCharsToAnalyze()-1) ;
             String snippets = highlighter.getBestFragments(tokenStream, mainText,3, "...");
 
             // construct document results
@@ -125,9 +120,4 @@ public class SearchDocs {
         directory.close();
         return documents;
     }
-
-    public static void main(String[] args) throws Exception {
-        ArrayList a = searchDocuments("Dog", "yog");
-    }
-
 }

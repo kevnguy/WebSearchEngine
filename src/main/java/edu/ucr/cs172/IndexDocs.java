@@ -3,9 +3,7 @@ package edu.ucr.cs172;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
-
 import com.mongodb.client.*;
-
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.*;
 import org.apache.lucene.analysis.Analyzer;
@@ -16,7 +14,6 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
-
 import static org.apache.lucene.document.DateTools.dateToString;
 
 import org.apache.logging.log4j.Logger;
@@ -120,12 +117,5 @@ public class IndexDocs {
             field = new FieldType(StringField.TYPE_NOT_STORED);
         field.setIndexOptions(IndexOptions.NONE);
         return field;
-    }
-
-    // helper to configure index storage and properties for dates
-    private static FieldType fieldDate() {
-        FieldType date = new FieldType(TextField.TYPE_STORED);
-        date.setIndexOptions(IndexOptions.NONE);
-        return date;
     }
 }
