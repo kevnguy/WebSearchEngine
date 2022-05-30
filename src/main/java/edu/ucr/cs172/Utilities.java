@@ -8,7 +8,6 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.custom.CustomAnalyzer;
-import org.apache.lucene.analysis.en.EnglishPossessiveFilter;
 
 import static edu.ucr.cs172.IndexDocs.logger;
 
